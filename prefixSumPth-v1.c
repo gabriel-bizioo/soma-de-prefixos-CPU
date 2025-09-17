@@ -97,7 +97,7 @@ void verifyPrefixSum( const TYPE *InputVec,       // original (initial) vector
                ok = 0;
                break;
            }
-           last = prefixSumVec[i];    
+           last = prefixSumVec[i];
     }  
     if( ok )
        printf( "\nPrefix Sum verified correctly.\n" );
@@ -116,14 +116,23 @@ void sequentialPrefixSum( volatile TYPE *Vec,
            Vec[i] += Vec[i-1];
 }  
    
+void ParallelPrefixSum(void *tid) {
+    int indexing = nTotalElements > nThreads ? nTotalElements/nThreads : nThreads/nTotalElements;
 
-void ParallelPrefixSumPth( volatile TYPE *Vec, 
+    long int start = indexing * (long int)(tid);
+    long int end = start + indexing;
+
+    for(int i = start; i < end; ++i) {
+        
+    }
+}
+
+void ParallelPrefixSumPth( volatile TYPE *Vec,
                            long nTotalElmts,
                            int nThreads )
 {
    pthread_t Thread[MAX_THREADS];
    int my_thread_id[MAX_THREADS];
-   
 
    ///////////////// INCLUIR AQUI SEU CODIGO da V1 /////////
    
@@ -132,8 +141,20 @@ void ParallelPrefixSumPth( volatile TYPE *Vec,
    // voce pode criar outras funcoes para as suas threads
    
    //////////////////////////////////////////////////////////
+
+   pthread_attr_t thAttr;
+   pthread_attr_init(&thAttr);
+
+   printf("%d \n", indexing);
+   int start;
+
+   for(int i = 0; i < nThreads; ++i) {
+       my_thread_id[i] = i;
+       pthread_create(Thread[i], thAttr, ParallelPrefixSum, my_thread_id);
+   }
    
 }
+
 
 int main(int argc, char *argv[])
 {
