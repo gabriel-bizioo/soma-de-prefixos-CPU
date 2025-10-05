@@ -7,6 +7,7 @@
 ///////////////////////////////////////
 
 #include <pthread.h>
+#include <bits/pthreadtypes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -70,6 +71,13 @@ chronometer_t memcpyTime;
 
 volatile TYPE partialSum[MAX_THREADS];
 
+int prefixSum_thread_id[MAX_THREADS];
+pthread_barrier_t poolBarrier;
+pthread_barrier_t prefixBarrier;
+
+
+
+
 int min(int a, int b) {
   if (a < b)
     return a;
@@ -111,73 +119,58 @@ void sequentialPrefixSum(volatile TYPE *Vec, long nTotalElmts, int nThreads) {
 }
 
 typedef struct {
-  int nThreads;
   int tid;
-  pthread_barrier_t *br;
   volatile TYPE *Vec;
 } pArgs;
 
 void *ParallelPrefixSum(void *args) {
-  int indexing = nTotalElements > nThreads ?
-      nTotalElements / nThreads : nThreads / nTotalElements;
-  pArgs *arg = args;
-  volatile TYPE *Vec = arg->Vec;
-  pthread_barrier_wait(arg->br);
+    int indexing = nTotalElements > nThreads ? nTotalElements / nThreads : nThreads / nTotalElements;
+    pArgs *tid = args;
+    volatile TYPE *Vec = tid->Vec;
 
-  long int start = indexing * (long int)(arg->tid);
-  long int end = start + indexing;
-  if(arg->tid == nThreads-1 && end < nTotalElements)
-      end = nTotalElements;
+    long int start = indexing * (long int)(tid->tid);
+    long int end = start + indexing;
+  if(tid->tid == nThreads-1 && end < nTotalElements)
+        end = nTotalElements;
 
-  //fprintf(stderr, "thread %d somando:\n", arg->tid, partialSum[arg->tid]);
-  while( 1 ) {
-      fprintf(stderr, " pthread id %d entrou na barreira (start: %ld, end: %ld)\n",
-              arg->tid, start, end);
-      pthread_barrier_wait(arg->br);
-      fprintf(stderr, " pthread id %d saiu da barreira\n", arg->tid);
-      register int myPrefixSum = 0;
-      for (int i = start; i < end; ++i) {
-          myPrefixSum += Vec[i];
-          //fprintf(stderr, " %d", Vec[i]);
-      }
+    //fprintf(stderr, "thread %d somando:\n", arg->tid, partialSum[arg->tid]);
+    while( 1 ) {
+        pthread_barrier_wait(&prefixBarrier);
 
-      partialSum[arg->tid] = myPrefixSum;
+        register int myPrefixSum = 0;
+        for (int i = start; i < end; ++i)
+            myPrefixSum += Vec[i];
 
-      pthread_barrier_wait(arg->br);
-      if(arg->tid == 0) {
-        fprintf(stderr, "Thread 0 saiu da reducao");
-        return NULL;
-      }
-  }
-   //fprintf(stderr, "\nthread %d partialSum = %d\n", arg->tid, partialSum[arg->tid]);
+        partialSum[tid->tid] = myPrefixSum;
 
-   //         arg->tid, start, end);
-   // pthread_barrier_wait(arg->br);
-   //
-   // for(int i = 0; i < arg->tid; ++i)
-   //      myPrefixSum += partialSum[i];
-   // //fprintf(stderr, "Thread %d prefix sum: %d\n", arg->tid, myPrefixSum);
-   // Vec[start] += myPrefixSum;
-   // //fprintf(stderr, "Imprimindo resultado:\n");
-   // for(int i = start+1; i < end; ++i) {
-   //      Vec[i] += Vec[i-1];
-   //      //fprintf(stderr, "%d ", Vec[i]);
-   //  }
-   //  //fprintf(stderr, "\n");
-   //  pthread_barrier_wait(arg->br);
-  if(arg->tid != 0) {
-      fprintf(stderr, "Thread %d deu problema\n", arg->tid);
-      pthread_exit(NULL);
+        pthread_barrier_wait(&prefixBarrier);
+
+        myPrefixSum = 0;
+        for(int i = 0; i < tid->tid; ++i)
+             myPrefixSum += partialSum[i];
+
+        Vec[start] += myPrefixSum;
+        for(int i = start+1; i < end; ++i)
+             Vec[i] += Vec[i-1];
+
+        pthread_barrier_wait(&prefixBarrier);
+        if(tid->tid == 0)
+            return NULL;
   }
 
-  return NULL;
+
+    if(tid->tid != 0) {
+        fprintf(stderr, "Thread %d deu problema\n", tid->tid);
+        pthread_exit(NULL);
+    }
+
+    return NULL;
 }
 
 void ParallelPrefixSumPth(volatile TYPE *Vec, long nTotalElmts, int nThreads) {
   pthread_t Thread[MAX_THREADS];
   int my_thread_id[MAX_THREADS];
 
-  static int initialized = 0;
 
   ///////////////// INCLUIR AQUI SEU CODIGO da V1 /////////
 
@@ -186,35 +179,32 @@ void ParallelPrefixSumPth(volatile TYPE *Vec, long nTotalElmts, int nThreads) {
   // voce pode criar outras funcoes para as suas threads
 
   //////////////////////////////////////////////////////////
-  void *(*sum)(void *);
-  sum = &ParallelPrefixSum;
 
-  if(!initialized) {
-      // Acho que a barrier eh inicializada aqui, antes de chamar as threads
-      pthread_barrier_t *barrier = malloc(sizeof(pthread_barrier_t));
-      pthread_barrierattr_t *attr = malloc(sizeof(pthread_barrierattr_t));
-      pthread_barrierattr_init(attr);
-      pthread_barrier_init(barrier, attr, nThreads);
+    static int initialized = 0;
 
-      pthread_attr_t thAttr;
-      pthread_attr_init(&thAttr);
+    void *(*sum)(void *);
+    sum = &ParallelPrefixSum;
+    pArgs parg;
 
-      my_thread_id[0] = 0;
-      for (int i = 1; i < nThreads; ++i) {
-          pArgs *args = malloc(sizeof(pArgs));
-          args->nThreads = nThreads;
-          my_thread_id[i] = i;
-          args->tid = i;
-          args->br = barrier;
-          args->Vec = Vec;
-          fprintf(stderr, " criando thread %d de %d\n",
-                  my_thread_id[i]+1,
-                  args->nThreads);
-          pthread_create(&Thread[i], &thAttr, &ParallelPrefixSum, args);
-      }
-      initialized = 1;
-  }
+    if( !initialized ) {
+        pthread_barrier_init(&prefixBarrier, NULL, nThreads);
 
+        my_thread_id[0] = 0;
+        parg.tid = 0; parg.Vec = Vec;
+        for (int i = 1; i < nThreads; ++i) {
+            pArgs *args = malloc(sizeof(pArgs));
+            my_thread_id[i] = i;
+            args->tid = i;
+            args->Vec = Vec;
+
+            fprintf(stderr, " criando thread %d de %d\n", my_thread_id[i]+1, nThreads);
+            pthread_create(&Thread[i], NULL, &ParallelPrefixSum, args);
+        }
+
+        initialized = 1;
+    }
+
+    ParallelPrefixSum(&parg);
 }
 
 int main(int argc, char *argv[]) {
@@ -290,7 +280,7 @@ int main(int argc, char *argv[]) {
 
 ////////////////////////////
 // call it N times
-#define NTIMES 1
+#define NTIMES 1000
   for (int i = 0; i < NTIMES; i++) {
 
     // make a copy, measure time taken
