@@ -125,42 +125,43 @@ typedef struct {
 
 void *ParallelPrefixSum(void *args) {
     int indexing = nTotalElements > nThreads ? nTotalElements / nThreads : nThreads / nTotalElements;
-    pArgs *tid = args;
-    volatile TYPE *Vec = tid->Vec;
+    pArgs *arg = args;
+    volatile TYPE *Vec = arg->Vec;
+    int tid = arg->tid;
 
-    long int start = indexing * (long int)(tid->tid);
+    long int start = indexing * (long int)(tid);
     long int end = start + indexing;
-  if(tid->tid == nThreads-1 && end < nTotalElements)
+    if(tid == nThreads-1 && end < nTotalElements)
         end = nTotalElements;
 
-    //fprintf(stderr, "thread %d somando:\n", arg->tid, partialSum[arg->tid]);
     while( 1 ) {
         pthread_barrier_wait(&prefixBarrier);
 
         register int myPrefixSum = 0;
-        for (int i = start; i < end; ++i)
+        for (int i = start; i < end; ++i) {
             myPrefixSum += Vec[i];
+            Vec[i] = myPrefixSum;
+        }
 
-        partialSum[tid->tid] = myPrefixSum;
+        partialSum[tid] = myPrefixSum;
 
         pthread_barrier_wait(&prefixBarrier);
 
         myPrefixSum = 0;
-        for(int i = 0; i < tid->tid; ++i)
+        for(int i = 0; i < tid; ++i)
              myPrefixSum += partialSum[i];
 
-        Vec[start] += myPrefixSum;
-        for(int i = start+1; i < end; ++i)
-             Vec[i] += Vec[i-1];
+        for(int i = start; i < end; ++i)
+             Vec[i] += myPrefixSum;
 
         pthread_barrier_wait(&prefixBarrier);
-        if(tid->tid == 0)
+        if(tid == 0)
             return NULL;
   }
 
 
-    if(tid->tid != 0) {
-        fprintf(stderr, "Thread %d deu problema\n", tid->tid);
+    if(tid != 0) {
+        fprintf(stderr, "Thread %d deu problema\n", tid);
         pthread_exit(NULL);
     }
 
@@ -197,7 +198,6 @@ void ParallelPrefixSumPth(volatile TYPE *Vec, long nTotalElmts, int nThreads) {
             args->tid = i;
             args->Vec = Vec;
 
-            fprintf(stderr, " criando thread %d de %d\n", my_thread_id[i]+1, nThreads);
             pthread_create(&Thread[i], NULL, &ParallelPrefixSum, args);
         }
 
