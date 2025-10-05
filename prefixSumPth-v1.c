@@ -17,7 +17,7 @@
 // #define DEBUG 2      // defina 2 para ver debugs
 #define DEBUG 0
 
-// #define SEQUENTIAL_VERSION 0      // ATENÇAO: COMENTAR esse #define para
+//#define SEQUENTIAL_VERSION 0      // ATENÇAO: COMENTAR esse #define para
 // rodar o seu codigo paralelo
 
 #define MAX_THREADS 64
@@ -28,9 +28,9 @@
 
 // ESCOLHA o tipo dos elementos usando o #define MY_TYPE adequado abaixo
 //    a fazer a SOMA DE PREFIXOS:
-// #define MY_TYPE LONG_LONG_T        // OBS: o enunciado pedia ESSE (long long)
+#define MY_TYPE LONG_LONG_T        // OBS: o enunciado pedia ESSE (long long)
 // #define MY_TYPE DOUBLE_T
-#define MY_TYPE UINT_T
+//#define MY_TYPE UINT_T
 
 #if MY_TYPE == LONG_LONG_T
 #define TYPE long long
@@ -137,10 +137,10 @@ void *ParallelPrefixSum(void *args) {
     while( 1 ) {
         pthread_barrier_wait(&prefixBarrier);
 
-        register int myPrefixSum = 0;
+        register long long int myPrefixSum = 0;
         for (int i = start; i < end; ++i) {
             myPrefixSum += Vec[i];
-            Vec[i] = myPrefixSum;
+            //Vec[i] = myPrefixSum;
         }
 
         partialSum[tid] = myPrefixSum;
@@ -151,8 +151,11 @@ void *ParallelPrefixSum(void *args) {
         for(int i = 0; i < tid; ++i)
              myPrefixSum += partialSum[i];
 
-        for(int i = start; i < end; ++i)
-             Vec[i] += myPrefixSum;
+        TYPE accumulator = myPrefixSum;
+        for(int i = start; i < end; ++i) {
+            accumulator += Vec[i];
+            Vec[i] = accumulator;
+        }
 
         pthread_barrier_wait(&prefixBarrier);
         if(tid == 0)
