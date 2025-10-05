@@ -152,6 +152,7 @@ void *ParallelPrefixSum(void *args) {
         for(int i = 0; i < tid; ++i)
              myPrefixSum += partialSum[i];
 
+        TYPE accumulator = myPrefixSum;
         for(TYPE i = start; i < end; ++i) {
             accumulator += Vec[i];
             Vec[i] = accumulator;
@@ -191,6 +192,7 @@ void ParallelPrefixSumPth(volatile TYPE *Vec, long nTotalElmts, int nThreads) {
     sum = &ParallelPrefixSum;
     pArgs parg;
 
+    //Roda da primeira vez, inicia threads, argumentos e barreiras
     if( !initialized ) {
         pthread_barrier_init(&prefixBarrier, NULL, nThreads);
 
@@ -208,6 +210,7 @@ void ParallelPrefixSumPth(volatile TYPE *Vec, long nTotalElmts, int nThreads) {
         initialized = 1;
     }
 
+    //thread 0 chama as outras threads
     ParallelPrefixSum(&parg);
 }
 
