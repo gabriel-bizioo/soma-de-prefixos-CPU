@@ -72,7 +72,6 @@ chronometer_t memcpyTime;
 volatile TYPE partialSum[MAX_THREADS];
 
 int prefixSum_thread_id[MAX_THREADS];
-pthread_barrier_t poolBarrier;
 pthread_barrier_t prefixBarrier;
 
 
@@ -129,34 +128,36 @@ void *ParallelPrefixSum(void *args) {
     volatile TYPE *Vec = arg->Vec;
     int tid = arg->tid;
 
-    long int start = indexing * (long int)(tid);
-    long int end = start + indexing;
+    TYPE start = indexing * (long int)(tid);
+    TYPE end = start + indexing;
     if(tid == nThreads-1 && end < nTotalElements)
         end = nTotalElements;
 
     while( 1 ) {
+        //Sincronizacao do Pool de threads
         pthread_barrier_wait(&prefixBarrier);
+        //Parte 1
 
-        register long long int myPrefixSum = 0;
-        for (int i = start; i < end; ++i) {
+        register TYPE myPrefixSum = 0;
+        for (TYPE i = start; i < end; ++i)
             myPrefixSum += Vec[i];
-            //Vec[i] = myPrefixSum;
-        }
 
         partialSum[tid] = myPrefixSum;
 
+        //Sincroniza todas as somas parciais
         pthread_barrier_wait(&prefixBarrier);
+        //Parte 2
 
         myPrefixSum = 0;
         for(int i = 0; i < tid; ++i)
              myPrefixSum += partialSum[i];
 
-        TYPE accumulator = myPrefixSum;
-        for(int i = start; i < end; ++i) {
+        for(TYPE i = start; i < end; ++i) {
             accumulator += Vec[i];
             Vec[i] = accumulator;
         }
 
+        //Sincronizacao do Pool de threads
         pthread_barrier_wait(&prefixBarrier);
         if(tid == 0)
             return NULL;
